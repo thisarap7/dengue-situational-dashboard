@@ -1,6 +1,7 @@
 # Dengue Situational Dashboard - Python dependencies
 # Install with:  pip install -r requirements.txt
-streamlit>=1.40
+streamlit>=1.44          # native OIDC auth: st.login / st.user
+Authlib>=1.3.2           # required by Streamlit's st.login (Google sign-in)
 pdfplumber>=0.11
 pandas>=2.0
 altair>=5.0

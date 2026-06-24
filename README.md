@@ -81,33 +81,54 @@ python dengue_analytics.py .
 
 ## Who can upload (access control)
 
-**Viewing the dashboard is open to everyone. Uploading PDFs is restricted.**
+**Viewing the dashboard is open to everyone. Uploading PDFs is restricted to
+named Google accounts.**
 
-- The **🔒 Data admin** panel in the sidebar reveals the upload control *only*
-  after a correct **admin passcode** is entered. The uploader is never created
-  for ordinary visitors — it's a server-side gate, not just a hidden widget.
-- The passcode is read from `admin_password` in Streamlit **secrets** (never
-  committed to the repo). **Until you set it, uploads are disabled for
-  everyone** (the safe default) — the dashboard still works, fed by the PDFs in
-  the repo.
-- The durable way to add data is committing PDFs to the repo, which only people
-  with repo write access can do. Sidebar uploads are a session-only convenience
-  for trusted editors and vanish when the hosted app restarts.
+- The **🔒 Data admin** panel offers **Sign in with Google** (Streamlit's native
+  OIDC login). After sign-in, the upload control appears **only** if your email
+  is on the `editor_emails` allow-list. The uploader is never created for anyone
+  else — a server-side gate, not just a hidden widget.
+- **Until Google sign-in is configured, uploads are disabled for everyone** (the
+  safe default); the dashboard still runs on the PDFs in the repo.
+- The durable way to add data is committing PDFs to the repo (repo write access
+  required). Sidebar uploads are a session-only convenience and vanish when the
+  hosted app restarts.
 
-**Set the passcode (one time):** on Streamlit Cloud open your app → **⋮ →
-Settings → Secrets** and add:
+### One-time setup
+
+**1. Create a Google OAuth client** (Google Cloud Console → *APIs & Services*):
+
+- *OAuth consent screen* → **External** → add app name + your email. Scopes
+  `openid`, `email`, `profile` are non-sensitive (no Google verification
+  needed). Publish to **Production** (or keep **Testing** and add each editor as
+  a "test user" for an extra layer).
+- *Credentials* → **Create credentials → OAuth client ID → Web application**.
+  Under **Authorized redirect URIs** add (exact match matters):
+  - `https://densit-sl.streamlit.app/oauth2callback`  *(deployed)*
+  - `http://localhost:8501/oauth2callback`  *(optional, for local testing)*
+- Copy the **Client ID** and **Client secret**.
+
+**2. Add secrets** on Streamlit Cloud (your app → **⋮ → Settings → Secrets**):
 
 ```toml
-admin_password = "choose-a-strong-passphrase"
+# Who may upload (lower-case Google emails)
+editor_emails = ["thisaraperera7@gmail.com", "colleague@example.com"]
+
+[auth]
+redirect_uri = "https://densit-sl.streamlit.app/oauth2callback"
+cookie_secret = "a-long-random-string-change-me"   # e.g. python -c "import secrets;print(secrets.token_hex(32))"
+client_id = "<google-client-id>"
+client_secret = "<google-client-secret>"
+server_metadata_url = "https://accounts.google.com/.well-known/openid-configuration"
 ```
 
-Save — the app restarts and editors who know the passphrase can upload. To test
-admin mode locally, create `.streamlit/secrets.toml` (already git-ignored) with
-the same line.
+Save — the app restarts. Allow-listed editors can now sign in and upload;
+everyone else keeps view-only access. To add/remove an editor later, just edit
+`editor_emails` (no redeploy needed).
 
-> Want per-person logins instead of one shared passcode? Streamlit supports
-> Google/OIDC sign-in (`st.login`); ask and it can be wired in with an email
-> allow-list.
+**Local testing:** put the same secrets in `.streamlit/secrets.toml` (already
+git-ignored) but with `redirect_uri = "http://localhost:8501/oauth2callback"`,
+and `pip install -r requirements.txt` (installs `Authlib`).
 
 ---
 
@@ -121,8 +142,9 @@ This repo is deployment-ready (`requirements.txt`, `.streamlit/config.toml`).
    **"Create app" → "Deploy a public app from GitHub"**.
 3. Pick this repo, branch `main`, main file `app.py`, choose a subdomain, and
    **Deploy**. First build takes a few minutes.
-4. **Set the upload passcode** (see *Who can upload* above) under
-   **Settings → Secrets**. Until then, uploads are disabled for everyone.
+4. **Enable editor uploads** (optional) by configuring Google sign-in under
+   **Settings → Secrets** — see *Who can upload* above. Until then, uploads are
+   disabled for everyone (the dashboard still works on the repo's PDFs).
 5. **To update the dashboard with a new day:** commit the new
    `Daily Update ….pdf` to the repo —
 

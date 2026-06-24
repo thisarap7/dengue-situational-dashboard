@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import io
 import json
-import hmac
 from pathlib import Path
 
 import numpy as np
@@ -62,59 +61,92 @@ def fmt(n, dp=0):
 folder = APP_DIR
 
 
-def _get_secret(key):
-    """Read a Streamlit secret, returning None if no secrets are configured."""
+def _get_secret(key, default=None):
+    """Read a Streamlit secret, returning a default if secrets aren't set up."""
     try:
         return st.secrets[key]
     except Exception:
-        return None
+        return default
+
+
+def _auth_configured() -> bool:
+    """True when an [auth] section (OIDC / Google sign-in) is present in secrets."""
+    try:
+        return "auth" in st.secrets
+    except Exception:
+        return False
+
+
+def _editor_emails() -> set[str]:
+    """The allow-list of Google accounts permitted to upload (from secrets)."""
+    raw = _get_secret("editor_emails", []) or []
+    if isinstance(raw, str):
+        raw = [raw]
+    return {str(e).strip().lower() for e in raw}
+
+
+def _handle_upload():
+    """Render the uploader + re-scan controls (only called for authorised users)."""
+    up = st.file_uploader("Add daily-update PDF(s)", type="pdf",
+                          accept_multiple_files=True)
+    if up:
+        added = 0
+        for f in up:
+            safe = Path(f.name).name              # strip any path component
+            if not safe.lower().endswith(".pdf"):
+                continue
+            (folder / safe).write_bytes(f.getbuffer())
+            added += 1
+        st.success(f"Added {added} PDF(s).")
+        st.cache_data.clear()
+    if st.button("🔄 Re-scan folder"):
+        st.cache_data.clear()
+    st.caption("Note: on the hosted app the filesystem is temporary, so uploads "
+               "last only until the app restarts. Commit PDFs to the repo for a "
+               "permanent update.")
 
 
 def render_admin_and_get_is_admin() -> bool:
-    """Viewing is open to everyone. Uploading new PDFs is restricted to people
-    who know the admin passcode (set as `admin_password` in the app's Secrets).
-    The uploader widget is only created for an authenticated admin, so it is not
-    reachable by ordinary visitors — this is a server-side gate, not a UI hide."""
-    admin_pw = _get_secret("admin_password")
+    """Viewing is open to everyone. Uploading is restricted to allow-listed
+    Google accounts via Streamlit's native OIDC sign-in (`st.login`). The
+    uploader widget is only created for an authenticated, authorised editor —
+    a server-side gate, not a UI hide."""
     with st.sidebar.expander("🔒 Data admin", expanded=False):
-        if not admin_pw:
+        if not _auth_configured():
             st.caption(
-                "Uploads are disabled. New daily PDFs are added by committing "
-                "them to the GitHub repo. To let trusted editors upload from "
-                "here instead, set an `admin_password` in **Settings → Secrets** "
-                "on Streamlit Cloud.")
+                "Google sign-in isn't configured yet, so uploads are disabled. "
+                "New PDFs can be added by committing them to the GitHub repo. "
+                "See the README (*Who can upload*) to enable sign-in.")
             return False
 
-        entered = st.text_input("Admin passcode", type="password",
-                                key="admin_pw_input",
-                                placeholder="Enter passcode to enable upload")
-        if not entered:
-            st.caption("Viewing is open to everyone; uploading requires the "
-                       "admin passcode.")
-            return False
-        if not hmac.compare_digest(str(entered), str(admin_pw)):
-            st.error("Incorrect passcode.")
+        try:
+            logged_in = bool(st.user.is_logged_in)
+        except Exception:
+            logged_in = False
+
+        if not logged_in:
+            st.caption("Viewing is open to everyone. To upload new PDFs, sign in "
+                       "with an authorised Google account.")
+            if st.button("🔑 Sign in with Google", use_container_width=True):
+                st.login()
             return False
 
-        st.success("Admin unlocked — you can add PDFs.")
-        up = st.file_uploader("Add daily-update PDF(s)", type="pdf",
-                              accept_multiple_files=True)
-        if up:
-            added = 0
-            for f in up:
-                safe = Path(f.name).name              # strip any path component
-                if not safe.lower().endswith(".pdf"):
-                    continue
-                (folder / safe).write_bytes(f.getbuffer())
-                added += 1
-            st.success(f"Added {added} PDF(s).")
-            st.cache_data.clear()
-        if st.button("🔄 Re-scan folder"):
-            st.cache_data.clear()
-        st.caption("Note: on the hosted app the filesystem is temporary, so "
-                   "uploads last only until the app restarts. Commit PDFs to "
-                   "the repo for a permanent update.")
-        return True
+        email = (getattr(st.user, "email", "") or "").lower()
+        name = getattr(st.user, "name", "") or email or "signed-in user"
+        allow = _editor_emails()
+        st.write(f"Signed in as **{name}**" + (f"  \n`{email}`" if email else ""))
+        if st.button("Log out", use_container_width=True):
+            st.logout()
+
+        if allow and email in allow:
+            st.success("Authorised editor — you can add PDFs.")
+            _handle_upload()
+            return True
+
+        st.error("This Google account isn't on the editor allow-list, so "
+                 "uploads aren't permitted. Ask the dashboard owner to add your "
+                 "email to `editor_emails` in the app secrets.")
+        return False
 
 
 st.sidebar.title("🦟 Dengue Dashboard")
