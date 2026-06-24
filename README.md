@@ -8,7 +8,7 @@ district choropleth map, and one-click data export.
 Everything is driven by the PDFs you drop into this folder — no manual data
 entry.
 
-**Live app:** _add your Streamlit Community Cloud URL here after deploying_
+**Live app:** <https://densit-sl.streamlit.app/>
 
 ---
 
