@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import io
 import json
+import hmac
 from pathlib import Path
 
 import numpy as np
@@ -53,22 +54,71 @@ def fmt(n, dp=0):
 
 
 # --------------------------------------------------------------------------- #
-# Sidebar — data source + flag thresholds
+# Sidebar — admin (gated upload) + flag thresholds
 # --------------------------------------------------------------------------- #
+# The data folder is fixed to the app directory (PDFs ship in the repo). We do
+# NOT expose a free-text path box on the public app — that would let any visitor
+# probe the server's filesystem.
+folder = APP_DIR
+
+
+def _get_secret(key):
+    """Read a Streamlit secret, returning None if no secrets are configured."""
+    try:
+        return st.secrets[key]
+    except Exception:
+        return None
+
+
+def render_admin_and_get_is_admin() -> bool:
+    """Viewing is open to everyone. Uploading new PDFs is restricted to people
+    who know the admin passcode (set as `admin_password` in the app's Secrets).
+    The uploader widget is only created for an authenticated admin, so it is not
+    reachable by ordinary visitors — this is a server-side gate, not a UI hide."""
+    admin_pw = _get_secret("admin_password")
+    with st.sidebar.expander("🔒 Data admin", expanded=False):
+        if not admin_pw:
+            st.caption(
+                "Uploads are disabled. New daily PDFs are added by committing "
+                "them to the GitHub repo. To let trusted editors upload from "
+                "here instead, set an `admin_password` in **Settings → Secrets** "
+                "on Streamlit Cloud.")
+            return False
+
+        entered = st.text_input("Admin passcode", type="password",
+                                key="admin_pw_input",
+                                placeholder="Enter passcode to enable upload")
+        if not entered:
+            st.caption("Viewing is open to everyone; uploading requires the "
+                       "admin passcode.")
+            return False
+        if not hmac.compare_digest(str(entered), str(admin_pw)):
+            st.error("Incorrect passcode.")
+            return False
+
+        st.success("Admin unlocked — you can add PDFs.")
+        up = st.file_uploader("Add daily-update PDF(s)", type="pdf",
+                              accept_multiple_files=True)
+        if up:
+            added = 0
+            for f in up:
+                safe = Path(f.name).name              # strip any path component
+                if not safe.lower().endswith(".pdf"):
+                    continue
+                (folder / safe).write_bytes(f.getbuffer())
+                added += 1
+            st.success(f"Added {added} PDF(s).")
+            st.cache_data.clear()
+        if st.button("🔄 Re-scan folder"):
+            st.cache_data.clear()
+        st.caption("Note: on the hosted app the filesystem is temporary, so "
+                   "uploads last only until the app restarts. Commit PDFs to "
+                   "the repo for a permanent update.")
+        return True
+
+
 st.sidebar.title("🦟 Dengue Dashboard")
-folder = Path(st.sidebar.text_input("PDF folder", value=str(APP_DIR)))
-
-up = st.sidebar.file_uploader(
-    "Add daily-update PDF(s)", type="pdf", accept_multiple_files=True,
-    help="Saved into the PDF folder and included immediately.")
-if up:
-    for f in up:
-        (folder / f.name).write_bytes(f.getbuffer())
-    st.sidebar.success(f"Added {len(up)} file(s).")
-    st.cache_data.clear()
-
-if st.sidebar.button("🔄 Re-scan folder"):
-    st.cache_data.clear()
+is_admin = render_admin_and_get_is_admin()
 
 st.sidebar.divider()
 st.sidebar.subheader("Flag thresholds")
@@ -88,8 +138,9 @@ except FileNotFoundError:
 
 if not sig:
     st.title("Dengue Situational Dashboard")
-    st.warning("No PDFs found. Upload daily-update PDFs from the sidebar, or "
-               "point the folder box at a folder containing them.")
+    st.warning("No daily-update PDFs are bundled with the app yet. Add them to "
+               "the repository (or, if you are an editor, unlock **Data admin** "
+               "in the sidebar and upload them).")
     st.stop()
 
 bundle = load_bundle(str(folder), sig)

@@ -20,9 +20,9 @@ entry.
    <http://localhost:8501>.
    - First time only: if it reports a missing package, run
      `pip install -r requirements.txt` and try again.
-3. To add a new day, just drop the new PDF in this folder (or use the
-   **"Add daily-update PDF(s)"** uploader in the sidebar) and click
-   **"Re-scan folder"**.
+3. To add a new day, drop the new PDF in this folder and restart (locally), or
+   commit it to the repo (hosted — see *Deploying*). Editors can also upload via
+   the password-protected **🔒 Data admin** panel in the sidebar.
 
 Manual launch (any OS):
 
@@ -79,6 +79,38 @@ python dengue_analytics.py .
 
 ---
 
+## Who can upload (access control)
+
+**Viewing the dashboard is open to everyone. Uploading PDFs is restricted.**
+
+- The **🔒 Data admin** panel in the sidebar reveals the upload control *only*
+  after a correct **admin passcode** is entered. The uploader is never created
+  for ordinary visitors — it's a server-side gate, not just a hidden widget.
+- The passcode is read from `admin_password` in Streamlit **secrets** (never
+  committed to the repo). **Until you set it, uploads are disabled for
+  everyone** (the safe default) — the dashboard still works, fed by the PDFs in
+  the repo.
+- The durable way to add data is committing PDFs to the repo, which only people
+  with repo write access can do. Sidebar uploads are a session-only convenience
+  for trusted editors and vanish when the hosted app restarts.
+
+**Set the passcode (one time):** on Streamlit Cloud open your app → **⋮ →
+Settings → Secrets** and add:
+
+```toml
+admin_password = "choose-a-strong-passphrase"
+```
+
+Save — the app restarts and editors who know the passphrase can upload. To test
+admin mode locally, create `.streamlit/secrets.toml` (already git-ignored) with
+the same line.
+
+> Want per-person logins instead of one shared passcode? Streamlit supports
+> Google/OIDC sign-in (`st.login`); ask and it can be wired in with an email
+> allow-list.
+
+---
+
 ## Deploying for free (Streamlit Community Cloud)
 
 This repo is deployment-ready (`requirements.txt`, `.streamlit/config.toml`).
@@ -89,7 +121,9 @@ This repo is deployment-ready (`requirements.txt`, `.streamlit/config.toml`).
    **"Create app" → "Deploy a public app from GitHub"**.
 3. Pick this repo, branch `main`, main file `app.py`, choose a subdomain, and
    **Deploy**. First build takes a few minutes.
-4. **To update the dashboard with a new day:** commit the new
+4. **Set the upload passcode** (see *Who can upload* above) under
+   **Settings → Secrets**. Until then, uploads are disabled for everyone.
+5. **To update the dashboard with a new day:** commit the new
    `Daily Update ….pdf` to the repo —
 
    ```bash
