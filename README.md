@@ -48,6 +48,7 @@ updates aren't always exactly one day apart).
 | Tab | Contents |
 |-----|----------|
 | **National trends** | Cumulative cases, derived new-cases/day, monthly totals, and deaths / high-risk MOH areas / midnight inpatients over time. |
+| **Outlook** | Epidemiological forecast: effective reproduction number **Rₜ** (growing vs declining), doubling/halving time, a 14-day projection fan (renewal equation), and a per-district growth outlook. See *Forecasting* below. |
 | **Area flags** | A ranked table of districts (or provinces / raw reporting units) with flags: 🔴 Surging · 🟠 High burden · 🟣 High per-capita. |
 | **Surge watch** | Areas where new cases are accelerating vs. their own recent baseline, plus trend lines for flagged movers. |
 | **Burden** | Cumulative case load and share by district / province. |
@@ -212,6 +213,28 @@ applies — so a wrong or malicious URL can't push bad data into the dashboard.
 - **One-time setup:** the Action commits to the repo, so enable write access at
   repo → **Settings → Actions → General → Workflow permissions → "Read and
   write permissions"**.
+
+---
+
+## Forecasting (the Outlook tab)
+
+Tier-1 epidemiological outlook in `dengue_forecast.py` (numpy/scipy only):
+
+- A continuous **daily incidence** series is reconstructed back to Jan 1 from
+  the monthly cumulative totals + the precise daily snapshots, so there is
+  enough transmission history.
+- **Rₜ** (effective reproduction number) via the Cori et al. (2013) method with
+  a gamma dengue serial interval (mean adjustable in the tab). Rₜ > 1 ⇒ growing.
+- **Growth rate** and **doubling / halving time**.
+- A **14-day projection** via the renewal equation (Rₜ held constant), with a
+  negative-binomial observation model so the prediction fan is realistically
+  wide. Plus a short-series per-district growth outlook.
+
+> Decision-support, not certainty: short series, held-constant Rₜ, and a
+> partly-reconstructed history mean the numbers are scenarios, not promises.
+> Roadmap (when more daily data accrues): seasonal models bootstrapped from
+> historical weekly data, climate-driven forecasts (Open-Meteo), and an SEIR
+> scenario model.
 
 ---
 

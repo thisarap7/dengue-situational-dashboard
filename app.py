@@ -312,8 +312,9 @@ st.info(" ".join(narrative))
 # --------------------------------------------------------------------------- #
 # Tabs
 # --------------------------------------------------------------------------- #
-tab_over, tab_flags, tab_surge, tab_burden, tab_pc, tab_map, tab_data = st.tabs(
-    ["📈 National trends", "🚩 Area flags", "🔴 Surge watch",
+(tab_over, tab_forecast, tab_flags, tab_surge, tab_burden, tab_pc, tab_map,
+ tab_data) = st.tabs(
+    ["📈 National trends", "🔮 Outlook", "🚩 Area flags", "🔴 Surge watch",
      "🟠 Burden", "🟣 Per-capita", "🗺️ Map", "📋 Data & export"])
 
 # ---- National trends ------------------------------------------------------ #
@@ -373,6 +374,118 @@ with tab_over:
                                 legend=alt.Legend(orient="bottom")),
                 tooltip=["date:T", "metric:N", "value:Q"]
             ).properties(height=260), use_container_width=True)
+
+# ---- Outlook / Forecast --------------------------------------------------- #
+with tab_forecast:
+    import dengue_forecast as fc
+
+    st.subheader("Transmission outlook & 14-day projection")
+    st.caption("Daily incidence is reconstructed from Jan 1 using the monthly "
+               "cumulative totals and the precise daily snapshots as anchors, "
+               "so there is enough transmission history for Rₜ.")
+
+    fc_c = st.columns(2)
+    si_mean = fc_c[0].slider("Serial interval mean (days)", 10.0, 25.0, 17.0, 0.5,
+                             help="Dengue human-to-human generation interval.")
+    horizon = fc_c[1].slider("Projection horizon (days)", 7, 28, 14, 1)
+
+    out = fc.national_outlook(meta, si_mean=si_mean, horizon=horizon)
+    inc = out["incidence"]
+    rt_now, growth, proj = out["rt_now"], out["growth"], out["projection"]
+
+    # KPI row
+    g = st.columns(4)
+    if rt_now:
+        trend = "🔴 growing" if rt_now["rt"] > 1 else "🟢 declining"
+        g[0].metric(f"Effective Rₜ ({trend})", f"{rt_now['rt']:.2f}",
+                    help=f"95% CrI {rt_now['lo']:.2f}–{rt_now['hi']:.2f}. "
+                         "Rₜ>1 = expanding epidemic.")
+    else:
+        g[0].metric("Effective Rₜ", "—")
+    if growth.get("doubling"):
+        g[1].metric("Doubling time", f"{growth['doubling']:.0f} d",
+                    f"+{100*growth['r']:.1f}%/day")
+    elif growth.get("halving"):
+        g[1].metric("Halving time", f"{growth['halving']:.0f} d",
+                    f"{100*growth['r']:.1f}%/day")
+    else:
+        g[1].metric("Growth rate", "—")
+    if proj is not None:
+        new_med = proj["p50"].sum()
+        g[2].metric(f"Projected new cases ({horizon} d)", f"{new_med:,.0f}",
+                    help=f"90% range {proj['p05'].sum():,.0f}–{proj['p95'].sum():,.0f}")
+        g[3].metric(f"Projected cumulative by {proj['date'].iloc[-1]:%d %b}",
+                    f"{out['last_cum'] + proj['cum_p50'].iloc[-1]:,.0f}")
+
+    # Rt over time
+    rt = out["rt"]
+    if not rt.empty:
+        st.markdown("**Effective reproduction number Rₜ over time**")
+        band = alt.Chart(rt).mark_area(opacity=0.2, color="#d62728").encode(
+            x=alt.X("date:T", title=None),
+            y=alt.Y("rt_lo:Q", title="Rₜ"), y2="rt_hi:Q")
+        line = alt.Chart(rt).mark_line(color="#d62728").encode(x="date:T", y="rt:Q",
+            tooltip=["date:T", alt.Tooltip("rt:Q", format=".2f"),
+                     alt.Tooltip("rt_lo:Q", format=".2f"),
+                     alt.Tooltip("rt_hi:Q", format=".2f")])
+        rule = alt.Chart(pd.DataFrame({"y": [1]})).mark_rule(
+            strokeDash=[4, 4], color="grey").encode(y="y:Q")
+        st.altair_chart((band + line + rule).properties(height=240),
+                        use_container_width=True)
+
+    # Projection fan chart
+    if proj is not None:
+        st.markdown(f"**{horizon}-day projection of new cases per day**")
+        hist = inc.rename_axis("date").reset_index(name="incidence")
+        hist = hist[hist["date"] >= inc.index.max() - pd.Timedelta(days=30)]
+        hist_line = alt.Chart(hist).mark_line(color="#1f77b4").encode(
+            x=alt.X("date:T", title=None), y=alt.Y("incidence:Q", title="New cases / day"),
+            tooltip=["date:T", alt.Tooltip("incidence:Q", format=".0f")])
+        band90 = alt.Chart(proj).mark_area(opacity=0.18, color="#d62728").encode(
+            x="date:T", y="p05:Q", y2="p95:Q")
+        band50 = alt.Chart(proj).mark_area(opacity=0.30, color="#d62728").encode(
+            x="date:T", y="p25:Q", y2="p75:Q")
+        med = alt.Chart(proj).mark_line(color="#d62728", strokeDash=[5, 3]).encode(
+            x="date:T", y="p50:Q",
+            tooltip=["date:T", alt.Tooltip("p50:Q", title="median", format=".0f"),
+                     alt.Tooltip("p05:Q", format=".0f"),
+                     alt.Tooltip("p95:Q", format=".0f")])
+        st.altair_chart((band90 + band50 + hist_line + med).properties(height=300),
+                        use_container_width=True)
+        st.caption("Blue = reconstructed recent daily incidence · red dashed = "
+                   "projected median · shaded = 50% / 90% prediction intervals.")
+
+    # District outlook
+    st.markdown("**District 14-day growth outlook**")
+    dtab = fc.district_outlook(bundle["districts"], horizon=horizon)
+    st.dataframe(dtab, use_container_width=True, hide_index=True,
+                 column_config={
+                     "district": "District",
+                     "recent_per_day": st.column_config.NumberColumn("Recent/day", format="%.1f"),
+                     "growth_pct_day": st.column_config.NumberColumn("Growth %/day", format="%.1f"),
+                     "doubling_days": st.column_config.NumberColumn("Doubling (d)", format="%.0f"),
+                     "halving_days": st.column_config.NumberColumn("Halving (d)", format="%.0f"),
+                     f"proj_new_{horizon}d": st.column_config.NumberColumn(
+                         f"Proj. new ({horizon}d)", format="%.0f"),
+                     "trend": "Trend"})
+
+    with st.expander("⚠️ Methods & limitations (read me)"):
+        st.markdown(
+            "- **Rₜ** uses the Cori et al. (2013) method with a gamma serial "
+            "interval (mean set in the sidebar). Rₜ>1 means each case is "
+            "infecting >1 other on average → the epidemic is growing.\n"
+            "- **Projection** uses the renewal equation, holding the current Rₜ "
+            "constant, with a negative-binomial observation model for realistic "
+            "spread. It assumes no change in transmission, reporting, weather or "
+            "interventions over the horizon.\n"
+            "- The daily series before the first snapshot is **reconstructed** "
+            "from monthly totals, so early-period detail is approximate and the "
+            "intervals can look tighter than real-world uncertainty.\n"
+            "- These predict **reported** cases and are **decision-support, not "
+            "certainty** — short series + a held-constant Rₜ mean medium-term "
+            "numbers should be read as scenarios, not promises.\n"
+            "- District projections are short-series exponential-trend "
+            "extrapolations (no Rₜ) and are noisier than the national outlook.")
 
 # ---- Area flags ----------------------------------------------------------- #
 with tab_flags:
