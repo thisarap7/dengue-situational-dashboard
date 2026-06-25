@@ -30,8 +30,29 @@ from dengue_parser import DISTRICT_TO_PROVINCE
 APP_DIR = Path(__file__).parent
 GEOJSON = APP_DIR / "lk_districts.geojson"
 
-st.set_page_config(page_title="Dengue Situational Dashboard — Sri Lanka",
-                   page_icon="🦟", layout="wide")
+
+def _find_logo():
+    for ext in ("png", "jpg", "jpeg", "webp"):
+        p = APP_DIR / f"cert_niid_logo.{ext}"
+        if p.exists():
+            return p
+    return None
+
+
+LOGO = _find_logo()
+
+try:
+    st.set_page_config(page_title="CeRT NIID Dengue Dashboard",
+                       page_icon=str(LOGO) if LOGO else "🦟", layout="wide")
+except Exception:  # noqa: BLE001  - bad icon path shouldn't break the app
+    st.set_page_config(page_title="CeRT NIID Dengue Dashboard",
+                       page_icon="🦟", layout="wide")
+
+if LOGO:
+    try:
+        st.logo(str(LOGO))           # branding in the app/sidebar chrome
+    except Exception:  # noqa: BLE001
+        pass
 
 # --------------------------------------------------------------------------- #
 # Data loading (cached on the set of PDFs + their mtimes)
@@ -149,7 +170,9 @@ def render_admin_and_get_is_admin() -> bool:
         return False
 
 
-st.sidebar.title("🦟 Dengue Dashboard")
+if LOGO:
+    st.sidebar.image(str(LOGO))
+st.sidebar.title("CeRT NIID Dengue Dashboard")
 is_admin = render_admin_and_get_is_admin()
 
 st.sidebar.divider()
@@ -197,7 +220,19 @@ def flag_table(level: str):
 # --------------------------------------------------------------------------- #
 # Header + KPIs
 # --------------------------------------------------------------------------- #
-st.title("Dengue Situational Dashboard — Sri Lanka")
+_TITLE = "CeRT NIID Dengue Dashboard"
+_SUBTITLE = ("National Institute of Infectious Diseases — "
+             "Centre for Research & Training, Sri Lanka")
+if LOGO:
+    _hc = st.columns([1, 7])
+    _hc[0].image(str(LOGO))
+    with _hc[1]:
+        st.title(_TITLE)
+        st.markdown(f"**{_SUBTITLE}**")
+else:
+    st.title(_TITLE)
+    st.markdown(f"**{_SUBTITLE}**")
+
 st.caption(f"Source: NaDSys surveillance (Epidemiology Unit). "
            f"Latest snapshot: **{as_of:%d %B %Y}** · "
            f"{len(bundle['snapshots'])} daily updates loaded "

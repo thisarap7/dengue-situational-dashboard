@@ -27,3 +27,6 @@ district_*.csv
 *.pptx
 Screenshot*.png
 screenshot*.png
+
+# ...but DO track the dashboard logo, whatever extension it has.
+!cert_niid_logo.*

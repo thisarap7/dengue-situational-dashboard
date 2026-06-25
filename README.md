@@ -1,9 +1,15 @@
-# Dengue Situational Dashboard — Sri Lanka
+# CeRT NIID Dengue Dashboard
+
+*National Institute of Infectious Diseases — Centre for Research & Training, Sri Lanka*
 
 An automated dashboard that turns the **NaDSys "Current Status of Dengue in Sri
 Lanka" daily-update PDFs** into a situational-awareness tool: national trends,
 area flagging (surging / high-burden / high per-capita), a surge watch, a
 district choropleth map, and one-click data export.
+
+> **Logo:** the header uses `cert_niid_logo.png` if present in this folder
+> (any of `.png/.jpg/.jpeg/.webp` works). It's optional — the app falls back to
+> a text header when the file is absent.
 
 Everything is driven by the PDFs you drop into this folder — no manual data
 entry.
