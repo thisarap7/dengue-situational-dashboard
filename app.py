@@ -206,6 +206,32 @@ st.caption(f"Source: NaDSys surveillance (Epidemiology Unit). "
            f"by differencing consecutive snapshots.")
 
 
+def render_freshness(folder: Path, as_of_date):
+    """Show how current the data is, plus what the auto-fetch agent last did."""
+    import datetime as _dt
+    age = (_dt.datetime.now(_dt.timezone.utc).date() - as_of_date).days
+    msg = f"Latest data: **{as_of_date:%d %b %Y}** ({age} day{'s' if age != 1 else ''} old)."
+    if age <= 1:
+        st.success("🟢 " + msg + " Up to date.")
+    elif age <= 4:
+        st.warning("🟡 " + msg + " A newer daily update may be available.")
+    else:
+        st.error("🔴 " + msg + " Please upload the latest PDF (or the daily "
+                 "auto-fetch agent will add it once a public source is configured).")
+
+    log_f = folder / "fetch_log.json"
+    if log_f.exists():
+        try:
+            log = json.loads(log_f.read_text(encoding="utf-8"))
+            st.caption(f"🤖 Auto-fetch agent last ran "
+                       f"{log.get('last_run_utc', '?')} — {log.get('result', '?')}.")
+        except Exception:  # noqa: BLE001
+            pass
+
+
+render_freshness(folder, as_of)
+
+
 def delta(cur, pre, dp=0, inverse=False):
     if pre is None or pd.isna(cur) or pd.isna(pre):
         return None

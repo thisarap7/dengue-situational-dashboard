@@ -1,0 +1,62 @@
+name: Daily dengue auto-fetch
+
+# Safety-net agent: if nobody uploads the daily PDF, try to fetch a newer,
+# VALIDATED official "Current Status of Dengue" PDF and commit it (which
+# auto-redeploys the Streamlit app). Runs unattended on a schedule and can also
+# be triggered by hand from the Actions tab.
+
+on:
+  schedule:
+    # Sri Lanka is UTC+5:30. The daily figures are "as of midnight" and tend to
+    # be published in the morning, so check a couple of times: 04:00 and 09:30
+    # UTC = 09:30 and 15:00 SLT. (cron is UTC.)
+    - cron: "0 4 * * *"
+    - cron: "30 9 * * *"
+  workflow_dispatch: {}        # manual "Run workflow" button
+
+permissions:
+  contents: write              # needed to commit the fetched PDF
+
+concurrency:
+  group: daily-dengue-fetch
+  cancel-in-progress: false
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install minimal parsing deps
+        run: pip install --quiet pdfplumber pandas
+
+      - name: Run the auto-fetch agent
+        id: fetch
+        run: python fetch_latest.py .
+
+      - name: Commit any new validated PDF
+        run: |
+          if [[ -n "$(git status --porcelain '*.pdf')" ]]; then
+            git config user.name  "dengue-fetch-bot"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add ./*.pdf fetch_log.json
+            git commit -m "Auto-fetch: add validated daily dengue update [skip ci]"
+            git push
+            echo "Committed new data."
+          else
+            echo "No new PDF to commit."
+            # still persist the fetch log so the dashboard can show last-checked
+            if [[ -n "$(git status --porcelain fetch_log.json)" ]]; then
+              git config user.name  "dengue-fetch-bot"
+              git config user.email "github-actions[bot]@users.noreply.github.com"
+              git add fetch_log.json
+              git commit -m "Update fetch log [skip ci]"
+              git push
+            fi
+          fi

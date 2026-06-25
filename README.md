@@ -161,6 +161,54 @@ This repo is deployment-ready (`requirements.txt`, `.streamlit/config.toml`).
 
 ---
 
+## Automated daily updates (the auto-fetch agent)
+
+If nobody uploads the daily PDF, a **GitHub Action** (`.github/workflows/
+daily-dengue-fetch.yml`) runs `fetch_latest.py` on a schedule as a safety net.
+The agent:
+
+1. Checks the **official sources** listed in `sources.json` for a newer
+   "Current Status of Dengue" PDF (only hosts on its allow-list are fetched).
+2. **Validates** each candidate with the same parser/QC the dashboard uses —
+   real PDF, parses to a snapshot, 25+ units and 9 provinces, district **and**
+   province totals equal the national YTD, date newer than what we have, and
+   YTD not lower than the last known value.
+3. Only if every check passes, commits the new `Daily Update ….pdf` (which
+   auto-redeploys the app). Everything it does is written to `fetch_log.json`,
+   surfaced in the dashboard header ("🤖 Auto-fetch agent last ran …").
+
+The dashboard header also shows a **freshness badge** (🟢 up to date / 🟡 a few
+days old / 🔴 please update).
+
+### Important: the daily PDF isn't on a public URL (yet)
+
+The daily NaDSys infographic is produced by the **login-gated** NaDSys portal
+(`dengue.epid.gov.lk`); it is **not** currently published at a public, scrapable
+URL. So the agent is **wired and ready but will report "no new PDF" until you
+point it at a real source.** When you find the URL the daily PDF lives at, add
+its pattern to `sources.json`:
+
+```jsonc
+"direct_url_templates": [
+  "https://<official-host>/path/Daily%20Update%20{Y}.%20{m}.%20{d}.pdf"
+],
+// {Y}=year, {m}=2-digit month, {d}=2-digit day; the agent tries the last few days.
+```
+
+Only hosts in `allow_hosts` are ever fetched, and the validation gate still
+applies — so a wrong or malicious URL can't push bad data into the dashboard.
+
+### Running / triggering it
+
+- **Automatic:** twice daily (see the `cron` lines in the workflow; times are
+  UTC — Sri Lanka is UTC+5:30).
+- **Manual:** repo → **Actions → "Daily dengue auto-fetch" → Run workflow**.
+- **One-time setup:** the Action commits to the repo, so enable write access at
+  repo → **Settings → Actions → General → Workflow permissions → "Read and
+  write permissions"**.
+
+---
+
 ## Data sources & notes
 
 - **Cases / deaths / KPIs:** NaDSys surveillance, Epidemiology Unit, Ministry of

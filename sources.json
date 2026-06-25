@@ -1,0 +1,15 @@
+{
+  "_comment": "Configuration for the daily auto-fetch agent (fetch_latest.py). The agent ONLY downloads from hosts in allow_hosts, and only accepts a PDF that passes full validation. Add the real daily-PDF URL pattern to direct_url_templates once you know it (placeholders: {Y}=year, {m}=2-digit month, {d}=2-digit day). scan_pages are official index pages crawled for links to a newer daily PDF.",
+  "allow_hosts": [
+    "www.epid.gov.lk",
+    "epid.gov.lk",
+    "www.dengue.health.gov.lk",
+    "dengue.health.gov.lk",
+    "dengue.epid.gov.lk"
+  ],
+  "direct_url_templates": [],
+  "scan_pages": [
+    "https://www.dengue.health.gov.lk/updates/"
+  ],
+  "lookback_days": 5
+}

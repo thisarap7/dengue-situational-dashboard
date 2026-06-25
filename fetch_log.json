@@ -1,0 +1,8 @@
+{
+  "last_run_utc": "2026-06-25T12:23:50+00:00",
+  "result": "no daily PDF available at the configured public sources yet \u2014 the daily NaDSys PDF is not currently published publicly; add its direct URL to sources.json when known",
+  "candidates_checked": 0,
+  "added": [],
+  "rejected": [],
+  "latest_local_date": "2026-06-23"
+}
