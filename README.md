@@ -209,6 +209,28 @@ applies — so a wrong or malicious URL can't push bad data into the dashboard.
 
 ---
 
+## Auto-push new PDFs from your PC (instant sync)
+
+So you never have to run git by hand: a small **folder watcher** auto-commits
+and pushes any new `Daily Update ….pdf` the moment you drop it into this folder
+(which then auto-redeploys the live app).
+
+- **Install once:** right-click `install_autosync.ps1` → *Run with PowerShell*
+  (no admin needed). It drops a hidden launcher in your Startup folder and
+  starts the watcher — so it runs automatically at **every login**.
+- **What it does on a new PDF:** waits a few seconds for the copy to finish →
+  stages **only `*.pdf`** (never your posters/screenshots/docs) → commits →
+  `git pull --rebase` (so it never clashes with the auto-fetch bot) → `git push`.
+- **Manual sync anytime:** double-click `sync_now.bat`.
+- **Activity log:** `auto_sync.log` (git-ignored).
+- **Turn it off:** delete `DengueAutoSync.vbs` from your Startup folder
+  (`Win+R` → `shell:startup`).
+
+Scripts: `watch_and_push.ps1` (the watcher), `install_autosync.ps1` (sets up
+auto-start), `sync_now.bat` (one-click manual push).
+
+---
+
 ## Data sources & notes
 
 - **Cases / deaths / KPIs:** NaDSys surveillance, Epidemiology Unit, Ministry of
