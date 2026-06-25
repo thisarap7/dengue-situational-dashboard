@@ -42,6 +42,9 @@ jobs:
 
       - name: Commit any new validated PDF
         run: |
+          # Only commit when a NEW daily PDF was actually added (avoids
+          # redeploy churn on the frequent no-op runs). The fetch_log.json is
+          # bundled into that same commit so the dashboard shows provenance.
           if [[ -n "$(git status --porcelain '*.pdf')" ]]; then
             git config user.name  "dengue-fetch-bot"
             git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -50,13 +53,5 @@ jobs:
             git push
             echo "Committed new data."
           else
-            echo "No new PDF to commit."
-            # still persist the fetch log so the dashboard can show last-checked
-            if [[ -n "$(git status --porcelain fetch_log.json)" ]]; then
-              git config user.name  "dengue-fetch-bot"
-              git config user.email "github-actions[bot]@users.noreply.github.com"
-              git add fetch_log.json
-              git commit -m "Update fetch log [skip ci]"
-              git push
-            fi
+            echo "No new PDF; nothing to commit (data is already current)."
           fi
