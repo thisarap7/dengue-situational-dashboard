@@ -18,3 +18,12 @@ Thumbs.db
 lk_districts_raw.geojson
 dengue_situational_*.xlsx
 district_*.csv
+
+# Unrelated local materials that live in this folder but are NOT part of the
+# dashboard (IEC posters, screenshots, working docs). Only the dengue
+# daily-update PDFs and the app code belong in the repo.
+*.webp
+*.docx
+*.pptx
+Screenshot*.png
+screenshot*.png
