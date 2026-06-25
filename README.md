@@ -49,6 +49,7 @@ updates aren't always exactly one day apart).
 |-----|----------|
 | **National trends** | Cumulative cases, derived new-cases/day, monthly totals, and deaths / high-risk MOH areas / midnight inpatients over time. |
 | **Outlook** | Epidemiological forecast: effective reproduction number **Rₜ** (growing vs declining), doubling/halving time, a 14-day projection fan (renewal equation), and a per-district growth outlook. See *Forecasting* below. |
+| **Climate** | Population-weighted national climate (Open-Meteo: history + 16-day forecast), an *Aedes* temperature **transmission-suitability index**, rainfall accumulation, and the rainfall→dengue **lead-time** (correlation by lag). See *Climate* below. |
 | **Area flags** | A ranked table of districts (or provinces / raw reporting units) with flags: 🔴 Surging · 🟠 High burden · 🟣 High per-capita. |
 | **Surge watch** | Areas where new cases are accelerating vs. their own recent baseline, plus trend lines for flagged movers. |
 | **Burden** | Cumulative case load and share by district / province. |
@@ -232,9 +233,27 @@ Tier-1 epidemiological outlook in `dengue_forecast.py` (numpy/scipy only):
 
 > Decision-support, not certainty: short series, held-constant Rₜ, and a
 > partly-reconstructed history mean the numbers are scenarios, not promises.
-> Roadmap (when more daily data accrues): seasonal models bootstrapped from
-> historical weekly data, climate-driven forecasts (Open-Meteo), and an SEIR
-> scenario model.
+
+---
+
+## Climate (the Climate tab)
+
+`climate_data.py` (stdlib + numpy/pandas) adds the strongest external driver of
+dengue:
+
+- **Open-Meteo** (free, no key) historical reanalysis + 16-day forecast, fetched
+  for all 25 district centroids and **population-weighted** to a national daily
+  series (temperature, rainfall, humidity). Cached 6 h in the app.
+- A temperature **transmission-suitability index** — relative R₀ for *Aedes
+  aegypti* (Briere fit, viable ~17.8–34.6 °C, optimum ~29 °C; Mordecai et al.
+  2017). Literature-based, so it needs **no local training data** and works now.
+- **Rainfall lead indicators** (28- and 56-day accumulation) and an exploratory
+  **lag-correlation** showing how many weeks rainfall leads cases (≈4 weeks in
+  the current data — consistent with the breeding→transmission lag).
+
+**Roadmap (Tier 3b+):** once historical weekly dengue is bootstrapped, fit a
+distributed-lag **negative-binomial / gradient-boosting** model to turn these
+climate drivers into a *calibrated* case forecast, and an SEIR scenario model.
 
 ---
 

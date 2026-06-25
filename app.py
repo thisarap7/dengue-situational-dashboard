@@ -67,6 +67,15 @@ def load_bundle(folder_str: str, _sig: tuple):
     return build_all(folder_str)
 
 
+@st.cache_data(ttl=6 * 3600, show_spinner="Fetching climate data…")
+def load_climate(folder_str: str):
+    """Population-weighted national climate + signals (cached 6h). None if the
+    Open-Meteo service is unreachable."""
+    import climate_data as cl
+    c = cl.fetch_climate(folder_str)
+    return cl.add_signals(c) if c is not None else None
+
+
 def fmt(n, dp=0):
     if n is None or (isinstance(n, float) and np.isnan(n)):
         return "—"
@@ -312,10 +321,10 @@ st.info(" ".join(narrative))
 # --------------------------------------------------------------------------- #
 # Tabs
 # --------------------------------------------------------------------------- #
-(tab_over, tab_forecast, tab_flags, tab_surge, tab_burden, tab_pc, tab_map,
- tab_data) = st.tabs(
-    ["📈 National trends", "🔮 Outlook", "🚩 Area flags", "🔴 Surge watch",
-     "🟠 Burden", "🟣 Per-capita", "🗺️ Map", "📋 Data & export"])
+(tab_over, tab_forecast, tab_climate, tab_flags, tab_surge, tab_burden, tab_pc,
+ tab_map, tab_data) = st.tabs(
+    ["📈 National trends", "🔮 Outlook", "🌦 Climate", "🚩 Area flags",
+     "🔴 Surge watch", "🟠 Burden", "🟣 Per-capita", "🗺️ Map", "📋 Data & export"])
 
 # ---- National trends ------------------------------------------------------ #
 with tab_over:
@@ -486,6 +495,123 @@ with tab_forecast:
             "numbers should be read as scenarios, not promises.\n"
             "- District projections are short-series exponential-trend "
             "extrapolations (no Rₜ) and are noisier than the national outlook.")
+
+# ---- Climate -------------------------------------------------------------- #
+with tab_climate:
+    import datetime as _dt
+    import dengue_forecast as _fc
+    import climate_data as _cl
+
+    st.subheader("Climate drivers & transmission suitability")
+    st.caption("Population-weighted national climate from Open-Meteo (historical "
+               "reanalysis + 16-day forecast). Temperature suitability uses the "
+               "Aedes aegypti thermal-response curve (Mordecai et al. 2017).")
+
+    clim = load_climate(str(folder))
+    if clim is None:
+        st.warning("Climate service is currently unreachable. Try again later "
+                   "— the rest of the dashboard is unaffected.")
+    else:
+        today_ts = pd.Timestamp(_dt.date.today())
+        obs = clim[clim.kind == "observed"]
+        fcst = clim[clim.kind == "forecast"]
+        last = obs.iloc[-1]
+
+        # incidence for the lead/lag overlay
+        inc, _ = _fc.reconstruct_national_incidence(meta)
+        lc = _cl.lag_correlation(inc, clim.set_index("date")["precip"])
+        best_lag = int(lc.loc[lc["corr"].idxmax(), "lag_weeks"]) if not lc.empty else None
+
+        k = st.columns(4)
+        suit = last["suitability"]
+        suit_lbl = ("🔴 high" if suit >= 0.7 else "🟠 moderate" if suit >= 0.4
+                    else "🟢 low")
+        k[0].metric(f"Temp. suitability ({suit_lbl})", f"{suit*100:.0f}%",
+                    help="Relative R₀ vs temperature for Aedes aegypti "
+                         "(100% = optimal ~29°C).")
+        k[1].metric("Mean temperature", f"{last['temp_mean']:.1f} °C")
+        k[2].metric("Rainfall, last 28 d", f"{last['rain_28d']:.0f} mm")
+        if fcst.shape[0]:
+            d_suit = fcst["suitability"].mean() - obs["suitability"].tail(15).mean()
+            k[3].metric("Suitability, next 15 d", f"{fcst['suitability'].mean()*100:.0f}%",
+                        f"{d_suit*100:+.0f} pts vs recent")
+
+        if best_lag is not None:
+            st.info(f"📈 In this data, rainfall **leads** dengue incidence most "
+                    f"strongly at about **{best_lag} weeks** "
+                    f"(correlation {lc['corr'].max():.2f}). Recent rain therefore "
+                    "hints at case pressure ~1 month ahead — exploratory on a "
+                    "short series.")
+
+        rule = alt.Chart(pd.DataFrame({"d": [today_ts]})).mark_rule(
+            color="grey", strokeDash=[3, 3]).encode(x="d:T")
+
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown("**Transmission suitability (temperature-driven)**")
+            ch = alt.Chart(clim).mark_line().encode(
+                x=alt.X("date:T", title=None),
+                y=alt.Y("suitability:Q", title="Suitability (0–1)",
+                        scale=alt.Scale(domain=[0, 1])),
+                color=alt.Color("kind:N", title=None,
+                                scale=alt.Scale(domain=["observed", "forecast"],
+                                                range=["#2ca02c", "#ff7f0e"])),
+                tooltip=["date:T", alt.Tooltip("suitability:Q", format=".2f"),
+                         alt.Tooltip("temp_mean:Q", format=".1f", title="°C")])
+            st.altair_chart((ch + rule).properties(height=260),
+                            use_container_width=True)
+        with c2:
+            st.markdown("**Mean temperature (°C)**")
+            tband = alt.Chart(clim).mark_area(opacity=0.15, color="#1f77b4").encode(
+                x="date:T", y=alt.Y("temp_min:Q", title="°C"), y2="temp_max:Q")
+            tline = alt.Chart(clim).mark_line(color="#1f77b4").encode(
+                x="date:T", y="temp_mean:Q",
+                tooltip=["date:T", alt.Tooltip("temp_mean:Q", format=".1f")])
+            st.altair_chart((tband + tline + rule).properties(height=260),
+                            use_container_width=True)
+
+        c3, c4 = st.columns(2)
+        with c3:
+            st.markdown("**Rainfall — daily & 28-day accumulation**")
+            bars = alt.Chart(clim).mark_bar(opacity=0.5).encode(
+                x=alt.X("date:T", title=None),
+                y=alt.Y("precip:Q", title="Daily rain (mm)"),
+                color=alt.Color("kind:N", legend=None,
+                                scale=alt.Scale(domain=["observed", "forecast"],
+                                                range=["#1f77b4", "#ff7f0e"])))
+            roll = alt.Chart(clim).mark_line(color="#08519c").encode(
+                x="date:T", y=alt.Y("rain_28d:Q", title="28-day rain (mm)"))
+            st.altair_chart(
+                alt.layer(bars, roll, rule).resolve_scale(y="independent")
+                .properties(height=260), use_container_width=True)
+        with c4:
+            st.markdown("**Rainfall → dengue lead-time (correlation by lag)**")
+            if not lc.empty:
+                lag_ch = alt.Chart(lc).mark_bar().encode(
+                    x=alt.X("lag_weeks:O", title="Rainfall lead (weeks)"),
+                    y=alt.Y("corr:Q", title="Correlation"),
+                    color=alt.condition(
+                        alt.datum.lag_weeks == best_lag,
+                        alt.value("#d62728"), alt.value("#c6dbef")),
+                    tooltip=["lag_weeks", alt.Tooltip("corr:Q", format=".2f"), "n"])
+                st.altair_chart(lag_ch.properties(height=260),
+                                use_container_width=True)
+
+        with st.expander("⚠️ Methods & limitations"):
+            st.markdown(
+                "- **Suitability** is the temperature-dependent relative R₀ for "
+                "*Aedes aegypti* (Briere fit, viable ~17.8–34.6 °C, optimum "
+                "~29 °C). It reflects mosquito/virus biology, **not** a model "
+                "trained on local cases — so treat it as a climate *pressure* "
+                "signal, not a case forecast.\n"
+                "- **Rainfall lead-time** is computed on the current short, "
+                "partly-reconstructed series; the ~4-week lead is consistent "
+                "with the literature but will firm up as data accrues.\n"
+                "- Climate is one driver among many (immunity, serotype, vector "
+                "control, urbanisation, reporting).\n"
+                "- **Roadmap:** with historical weekly dengue, fit a distributed-"
+                "lag negative-binomial / gradient-boosting model to turn these "
+                "drivers into a calibrated case forecast.")
 
 # ---- Area flags ----------------------------------------------------------- #
 with tab_flags:
